@@ -1,10 +1,15 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return 'Flask is running!'
+    user = {'nickname': 'MavX'}
+    return render_template(
+        'index.html',
+        title='Home',
+        user=user
+    )
 
 @app.route('/data')
 def names():
