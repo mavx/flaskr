@@ -1,10 +1,13 @@
 """Wrapper for Slack's Web API to post messages to channel."""
 
 from __future__ import print_function # Python 2/3 compatibility
+import datetime as dt
 import time
 import os
+import re
 from slackclient import SlackClient
 
+READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
 SLACK_TOKEN = os.environ['SLACK_TOKEN']
 BOT_ID = 'U3D9KDKJQ'
 # constants
@@ -42,20 +45,6 @@ class Slacker(object):
             print(e.message)
 
 
-def handle_command(command, channel):
-    """
-        Receives commands directed at the bot and determines if they
-        are valid commands. If so, then acts on the commands. If not,
-        returns back what it needs for clarification.
-    """
-    response = "Not sure what you mean. Use the *" + EXAMPLE_COMMAND + \
-               "* command with numbers, delimited by spaces."
-    if command.startswith(EXAMPLE_COMMAND):
-        response = "Sure...write some more code then I can do that!"
-    slack_client.api_call("chat.postMessage", channel=channel,
-                          text=response, as_user=True)
-
-
 def parse_slack_output(slack_rtm_output):
     """
         The Slack Real Time Messaging API is an events firehose.
@@ -72,9 +61,87 @@ def parse_slack_output(slack_rtm_output):
     return None, None
 
 
+def handle_command(command, channel):
+    """
+        Receives commands directed at the bot and determines if they
+        are valid commands. If so, then acts on the commands. If not,
+        returns back what it needs for clarification.
+    """
+    response = "Not sure what you mean. Use the *" + EXAMPLE_COMMAND + \
+               "* command with numbers, delimited by spaces."
+    if command.startswith(EXAMPLE_COMMAND):
+        response = "Sure...write some more code then I can do that!"
+    elif command.lower().startswith('user'):
+        sql = parse(command)
+        response = query(sql)[1][0]
+    elif command.lower().startswith('query'):
+        sql = command.replace('query', '')
+        response = query(sql)
+    slack_client.api_call("chat.postMessage", channel=channel,
+                          text=response, as_user=True)
+
+
+def query(sql_statement):
+    """Sends SQL statement to DB and returns results"""
+    import psql
+    db = psql.Connection()
+    try:
+        return db.execute(sql_statement)
+    except:
+        db.rollback()
+        return None
+
+
+def parse_date(date):
+    pass
+    
+def parse(string):
+    """Parses message input into SQL statements
+    Example:
+        - What is GB for today?
+        - How many users do we have on fave android today?
+    """
+
+    """
+    [metric][date_range]
+    
+    """
+    # Patterns
+    re_all_brackets = r'\[.*?\]'
+    re_single_date = r'\[\d{4}-\d{2}-\d{2}\]'
+    re_date_range = r'\[\d{4}-\d{2}-\d{2}, \d{4}-\d{2}-\d{2}\]'
+    re_metric = r'\[\w+\]'
+
+    args = re.findall(re_all_brackets, string)
+    metric = re.findall(re_metric, string)
+    single_date = re.findall(re_single_date, string)
+    date_range = re.findall(re_date_range, string)
+
+    # if len(args) = 2:
+    #     if metric and (single_date or date_range):
+    #         metric = metric[0].replace('[', '').replace(']', '')
+    #         if single_date:
+    #             date = single_date[0].replace('[', '').replace(']', '')
+    #         elif date_range:
+    #             date = date_range[0].replace('[', '').replace(']', '')
+
+    # else:
+    #     feedback = "I don't understand."
+
+    
+
+
+    sql = """
+    select sum(users) from bi_dwh.external_localytics
+    where date='{}'
+    and newuser='NA'
+    """.format(dt.date.today())
+
+    return sql
+
+
 if __name__ == '__main__':
     slack_client = SlackClient(SLACK_TOKEN)
-    READ_WEBSOCKET_DELAY = 1 # 1 second delay between reading from firehose
     if slack_client.rtm_connect():
         print("StarterBot connected and running!")
         while 1:
