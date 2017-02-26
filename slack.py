@@ -61,7 +61,7 @@ def parse_slack_output(slack_rtm_output):
     return None, None
 
 
-def handle_command(command, channel):
+def handle_command(client, command, channel):
     """
         Receives commands directed at the bot and determines if they
         are valid commands. If so, then acts on the commands. If not,
@@ -69,7 +69,7 @@ def handle_command(command, channel):
     """
     response = "Not sure what you mean. Use the *" + EXAMPLE_COMMAND + \
                "* command with numbers, delimited by spaces."
-    if command.startswith(EXAMPLE_COMMAND):
+    if command.lower().startswith('do'):
         response = "Sure...write some more code then I can do that!"
     elif command.lower().startswith('user'):
         sql = parse(command)
@@ -77,16 +77,26 @@ def handle_command(command, channel):
     elif command.lower().startswith('query'):
         sql = command.replace('query', '')
         response = query(sql)
-    slack_client.api_call("chat.postMessage", channel=channel,
+    client.api_call("chat.postMessage", channel=channel,
                           text=response, as_user=True)
 
 
 def query(sql_statement):
     """Sends SQL statement to DB and returns results"""
     import psql
+
+    def parse(value):
+        try:
+            return str(value)
+        except Exception as e:
+            print(e.message)
+            return value
+
     db = psql.Connection()
     try:
-        return db.execute(sql_statement)
+        results = db.execute(sql_statement)
+        return str(results)
+        # return [[parse(val) for val in row] for row in results]
     except:
         db.rollback()
         return None
@@ -140,16 +150,20 @@ def parse(string):
     return sql
 
 
-if __name__ == '__main__':
+def main():
     slack_client = SlackClient(SLACK_TOKEN)
     if slack_client.rtm_connect():
-        print("StarterBot connected and running!")
+        print("Bot ({}) connected and running!".format(BOT_ID))
         while 1:
             content = slack_client.rtm_read()
             print(content)
             command, channel = parse_slack_output(content)
             if command and channel:
-                handle_command(command, channel)
+                handle_command(slack_client, command, channel)
             time.sleep(READ_WEBSOCKET_DELAY)
     else:
         print("Connection failed. Invalid Slack token or bot ID?")
+    
+
+if __name__ == '__main__':
+    main()
